@@ -1,6 +1,7 @@
 package org.hackafe.sunshine;
 
 import android.content.Intent;
+import android.database.Cursor;
 import android.os.Bundle;
 import android.os.StrictMode;
 import android.support.v4.app.Fragment;
@@ -13,6 +14,8 @@ import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ListView;
+import android.widget.SimpleCursorAdapter;
+import android.widget.Toast;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -30,8 +33,28 @@ import java.util.List;
  * A placeholder fragment containing a simple view.
  */
 public class ForecastFragment extends Fragment {
+    private static final String TAG = "ForecastFragment";
+    DBAdapter myDb;
 
     public ForecastFragment() {
+    }
+
+    @Override
+    public void onDestroy() {
+        // TODO Auto-generated method stub
+        super.onDestroy();
+        closeDB();
+    }
+
+    private void openDB() {
+        // TODO Auto-generated method stub
+        myDb = new DBAdapter(getActivity());
+        myDb.open();
+    }
+
+    private void closeDB() {
+        // TODO Auto-generated method stub
+        myDb.close();
     }
 
     @Override
@@ -46,15 +69,28 @@ public class ForecastFragment extends Fragment {
         String data = getForecast();
         List<Forecast> forecast = parseForecast(data);
 
-
-        final ForecastAdapter adapter = new ForecastAdapter(inflater, forecast);
         final ListView collection = (ListView) rootView.findViewById(R.id.container);
-        collection.setAdapter(adapter);
+        Cursor dataCursor;
+        SimpleCursorAdapter astAdapter;
+
+        String[] columns = new String[]{myDb.KEY_ROWID, myDb.KEY_FORECAST};
+        String[] from = new String[]{myDb.KEY_FORECAST};
+        int[] viewIDs = new int[]{R.id.list_item_forecast_listview};
+        dataCursor = myDb.getAllRows(columns, null);
+        astAdapter = new SimpleCursorAdapter(collection.getContext(), R.layout.list_item_forecast, dataCursor, from, viewIDs, 0);
+        collection.setAdapter(astAdapter);
+
 
         collection.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-                Forecast item = (Forecast) adapter.getItem(position);
+                String where = null;
+                Cursor c = ((SimpleCursorAdapter) ((ListView) collection).getAdapter())
+                        .getCursor();
+                if (c.getCount() > 1) {
+                    where = "_id = '" + c.getInt(0) + "'";
+                }
+                Forecast item = myDb.getDayForecast(where);
                 Intent intent = new Intent(getActivity(), DayForecast.class);
                 intent.putExtra("TIMESTAMP", item.timestamp);
                 intent.putExtra(Intent.EXTRA_TEXT, item.desc);
@@ -63,18 +99,21 @@ public class ForecastFragment extends Fragment {
             }
         });
 
-        final EditText countInput = (EditText)rootView.findViewById(R.id.countInput);
-
-
+        final EditText countInput = (EditText) rootView.findViewById(R.id.countInput);
         Button addMoreBtn = (Button) rootView.findViewById(R.id.btn_add_more_items);
-
-
 
 
         return rootView;
     }
 
     private List<Forecast> parseForecast(String data) {
+        openDB();
+        try {
+            myDb.deleteAll();
+            myDb.resetID();
+        } catch (Error e) {
+            Log.e(TAG, "Cannot reset database values! Error: " + e.getMessage());
+        }
         try {
             List<Forecast> forecastList = new ArrayList<>();
             // parse String so we have JSONObject
@@ -82,7 +121,7 @@ public class ForecastFragment extends Fragment {
             // get "list" field as array
             JSONArray list = obj.getJSONArray("list");
             // iterate array and get forecast
-            for (int i=0; i<list.length(); i++) {
+            for (int i = 0; i < list.length(); i++) {
                 // get "i"th forecast
                 JSONObject forecastObj = list.getJSONObject(i);
 
@@ -101,17 +140,20 @@ public class ForecastFragment extends Fragment {
 
                 // extract "dt" date time in unix epoch format
                 long dt = forecastObj.getLong("dt");
-                String dateStr = SimpleDateFormat.getDateInstance().format(new Date(dt*1000));
+                String dateStr = SimpleDateFormat.getDateInstance().format(new Date(dt * 1000));
 
                 Forecast forecast = new Forecast();
                 forecast.desc = String.format("%s - %s   %.1f°C", dateStr, description, dayTemp);
                 forecast.timestamp = dt;
                 forecastList.add(forecast);
-                Log.d("Sunshine", "forecast = "+forecast);
+                myDb.insertRowForecast(dt, String.format("%s - %s   %.1f°C", dateStr, description, dayTemp));
+                Log.d("Sunshine", "forecast = " + forecast);
             }
+//            myDb.close();
             return forecastList;
         } catch (Throwable t) {
             Log.e("Sunshine", t.getMessage(), t);
+//            myDb.close();
             return null;
         }
     }
