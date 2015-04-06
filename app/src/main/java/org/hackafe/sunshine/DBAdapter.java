@@ -25,6 +25,12 @@ public class DBAdapter {
     // DB Fields
     public static final String KEY_ROWID = "_id";
     public static final int COL_ROWID = 0;
+    String dt;
+    String dt3;
+
+
+
+
     /*
      * CHANGE 1:
      */
